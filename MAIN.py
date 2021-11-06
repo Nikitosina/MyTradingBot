@@ -5,36 +5,15 @@ import tinvest as ti
 from tinvest.schemas import CandlesResponse
 import tokens
 from Balance import Balance
+from Logger import Logger, LogType
 
 
-class Operation(Enum):
+Logger.shared = Logger()
+
+
+class OperationType(Enum):
     SELL = 0
     BUY = 1
-
-
-class LogType(Enum):
-    info = 0
-    error = 1
-    buy = 2
-    sell = 3
-
-
-class Logger:
-    def __init__(self):
-        pass
-
-    def create_log(self, type: LogType, message: str):
-        res = ""
-        if type == LogType.info:
-            res += "[INFO] "
-        if type == LogType.error:
-            res += "[ERROR]"
-        if type == LogType.buy:
-            res += "[BUY]  "
-        if type == LogType.sell:
-            res += "[SELL] "
-        res += " (" + str(datetime.now()) + ") " + message
-        print(res)
 
 
 class Canal:
@@ -63,6 +42,43 @@ class Canal:
         # print(y_low, y_high)
 
 
+class Operation:
+    def __init__(self, type_: OperationType, price: float, currency: ti.Currency, lots: int):
+        self.type_ = type_
+        self.price = price
+        self.currency = currency
+        self.lots = lots
+        self.total_money = price * lots
+
+
+class Deal:
+    def __init__(self, ticker: str, figi: str, buy_limit: float, profit: float = 0, lots: int = 0, operations: list = []):
+        self.ticker = ticker
+        self.figi = figi
+        self.buy_limit = buy_limit
+        self.available_money = buy_limit
+        self.profit = profit
+        self.lots = lots
+        self.operations = operations
+
+    def make_operation(self, operation: Operation) -> None:
+        if operation.type_ == OperationType.BUY:
+            self.available_money -= operation.total_money
+            self.lots += operation.lots
+        
+        if operation.type_ == OperationType.SELL:
+            self.available_money += operation.total_money
+            self.lots -= operation.lots
+            if self.available_money > self.buy_limit:
+                self.profit += self.available_money - self.buy_limit
+                self.available_money = self.buy_limit
+
+        self.operations.append(operation)
+    
+    def total_percentage_profit(self) -> float:
+        return '{0:.2f}'.format(float((((self.buy_limit + self.profit) / self.buy_limit) - 1) * 100))
+
+
 class Strategy:
     # When to sell from top of canal
     TAKE_PROFIT_PERCENTAGE = 0.01
@@ -75,19 +91,29 @@ class Strategy:
         self.ticker = ticker
         self.figi = figi
         self.canal = canal
+        
+        self.setup()
 
-        lower_bound = canal.get_lower_bound()
-        upper_bound = canal.get_upper_bound()
-
-        self.buy_range = (lower_bound * (1 - self.BUY_THRESHOLD), lower_bound * (1 + self.BUY_THRESHOLD))
-        self.stop_loss_price = lower_bound * (1 - self.STOP_LOSS_PERCENTAGE)
-        self.take_profit_price = upper_bound * (1 - self.TAKE_PROFIT_PERCENTAGE)
-        self.canal_median = (lower_bound + upper_bound) / 2
+        Logger.shared.create_log(LogType.info, 
+            f'''Created Strategy for {self.ticker} with: 
+                Buy range: {self.buy_range}
+                Stop loss price: {self.stop_loss_price},
+                Take profit price: {self.take_profit_price},
+                Canal median: {self.canal_median}''')
 
         # print(self.buy_range)
         # print(self.stop_loss_price)
         # print(self.take_profit_price)
         # print(self.canal_median)
+
+    def setup(self, date: datetime = datetime.now()):
+        lower_bound = self.canal.get_lower_bound(date)
+        upper_bound = self.canal.get_upper_bound(date)
+
+        self.buy_range = (lower_bound * (1 - self.BUY_THRESHOLD), lower_bound * (1 + self.BUY_THRESHOLD))
+        self.stop_loss_price = lower_bound * (1 - self.STOP_LOSS_PERCENTAGE)
+        self.take_profit_price = upper_bound * (1 - self.TAKE_PROFIT_PERCENTAGE)
+        self.canal_median = (lower_bound + upper_bound) / 2
 
 
 class Helper: 
@@ -110,12 +136,9 @@ class Helper:
         point3 = self.generate_point(apple_figi, datetime(2021, 1, 18), datetime(2021, 1, 25), ti.CandleResolution.week, "h")
         canal = Canal("Apple", point1, point2, point3)
         self.strategy = Strategy("AAPL", apple_figi, canal)
-        self.logger.create_log(LogType.info, 
-            f'''Created Strategy for {self.strategy.ticker} with: 
-                Buy range: {self.strategy.buy_range}
-                Stop loss price: {self.strategy.stop_loss_price},
-                Take profit price: {self.strategy.take_profit_price},
-                Canal median: {self.strategy.canal_median}''')
+        deal = Deal("AAPL", apple_figi, 1000.0)
+        
+        self.test_strategy(self.strategy, deal, datetime(2020, 9, 21), datetime.now())
     
     def setup_sandbox(self):
         body = ti.SandboxRegisterRequest.tinkoff_iis()
@@ -135,6 +158,66 @@ class Helper:
         if target == "h":
             point = (from_.timestamp(), float(candle.h))
         return point
+    
+    def test_strategy(self,
+        strategy: Strategy,
+        deal: Deal,
+        from_: datetime, 
+        to: datetime, 
+        interval: ti.CandleResolution = ti.CandleResolution.week):
+
+        buy_price, sell_price = 0, 0
+        response = self.client.get_market_candles(strategy.figi, from_, to, interval)
+        candles = response.payload.candles
+        self.logger.create_log(LogType.info, f"Starting strategy test for {strategy.ticker}")
+        self.logger.create_log(LogType.info, f"Got {len(candles)} candles for strategy test")
+
+        for candle in candles:
+            self.strategy.setup(candle.time)
+            low_price = float(candle.l)
+            mid_price = (float(candle.o) + float(candle.c)) / 2
+            high_price = float(candle.h)
+            
+            # BUY
+            if strategy.buy_range[0] < low_price < strategy.buy_range[1] and deal.available_money - low_price > 0:
+                available_lots = int(deal.available_money / low_price)
+                body = ti.SandboxSetPositionBalanceRequest(
+                    balance=available_lots,
+                    figi=strategy.figi,
+                )
+                response = self.client.set_sandbox_positions_balance(body, tokens.SANDBOX_ACCOUNT_ID)
+
+                deal.make_operation(Operation(OperationType.BUY, low_price, ti.Currency.usd, available_lots))
+                buy_price = low_price
+                # self.logger.create_log(LogType.info, f"Status: {response.status}")
+                self.logger.create_log(LogType.buy, f'''Buy range achieved: 
+                    {strategy.ticker} {available_lots} lots for price ${low_price}
+                    Date: {candle.time}''')
+                self.logger.create_log(LogType.info, f"Balance: ${deal.available_money}")
+            
+            # SELL
+            if high_price >= strategy.take_profit_price and deal.lots > 0:
+                body = ti.SandboxSetPositionBalanceRequest(
+                    balance=0,
+                    figi=strategy.figi,
+                )
+                response = self.client.set_sandbox_positions_balance(body, tokens.SANDBOX_ACCOUNT_ID)
+
+                deal.make_operation(Operation(OperationType.SELL, high_price, ti.Currency.usd, available_lots))
+                sell_price = high_price
+                # self.logger.create_log(LogType.info, f"Status: {response.status}")
+                self.logger.create_log(LogType.sell, f'''Take profit achieved: 
+                    {strategy.ticker} {available_lots} lots for price ${high_price}
+                    Profit: +{'{0:.2f}'.format(float(((sell_price / buy_price) - 1) * 100))} %
+                    Date: {candle.time}''')
+                self.logger.create_log(LogType.info, f"Balance: ${deal.available_money}")
+        
+        self.logger.create_log(LogType.info, f"Overall profit: ${deal.profit} (+{deal.total_percentage_profit()} %)")
+        
+        # for operation in deal.operations:
+        #     print(operation.type_, operation.price, operation.total_money)
+        
+        
 
     def get_balance(self):
         response = self.client.get_portfolio("2026763157")
