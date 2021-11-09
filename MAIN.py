@@ -1,11 +1,13 @@
 from enum import Enum
 from pprint import pprint
 from datetime import datetime
+import telegram
 import tinvest as ti
 from tinvest.schemas import CandlesResponse
 import tokens
 from Balance import Balance
 from Logger import Logger, LogType
+from TelegramBot import bot as telegram_bot
 
 
 Logger.shared = Logger()
@@ -52,11 +54,20 @@ class Operation:
 
 
 class Deal:
-    def __init__(self, ticker: str, figi: str, buy_limit: float, profit: float = 0, lots: int = 0, operations: list = []):
+    def __init__(self, 
+        ticker: str, 
+        figi: str, 
+        buy_limit: float, 
+        currency: ti.Currency = ti.Currency.usd, 
+        profit: float = 0, 
+        lots: int = 0, 
+        operations: list = []
+        ):
         self.ticker = ticker
         self.figi = figi
         self.buy_limit = buy_limit
         self.available_money = buy_limit
+        self.currency = currency
         self.profit = profit
         self.lots = lots
         self.operations = operations
@@ -87,10 +98,21 @@ class Strategy:
     # When to buy from bottom of canal
     BUY_THRESHOLD = 0.02
 
-    def __init__(self, ticker: str, figi: str, canal: Canal):
+    def __init__(self, 
+        ticker: str, 
+        figi: str, 
+        canal: Canal, 
+        take_profit_percentage: float = 0.01,
+        stop_loss_percentage: float = 0.05,
+        buy_threshold: float = 0.02
+        ):
+        
         self.ticker = ticker
         self.figi = figi
         self.canal = canal
+        self.TAKE_PROFIT_PERCENTAGE = take_profit_percentage
+        self.STOP_LOSS_PERCENTAGE = stop_loss_percentage
+        self.BUY_THRESHOLD = buy_threshold
         
         self.setup()
 
@@ -129,16 +151,27 @@ class Helper:
         self.balance.update()
 
         self.strategies = []
+        self.deals = []
         
         apple_figi = self.get_figi_from_ticker("AAPL")
         point1 = self.generate_point(apple_figi, datetime(2020, 9, 14), datetime(2020, 9, 21), ti.CandleResolution.week)
         point2 = self.generate_point(apple_figi, datetime(2021, 3, 8), datetime(2021, 3, 15), ti.CandleResolution.week)
         point3 = self.generate_point(apple_figi, datetime(2021, 1, 18), datetime(2021, 1, 25), ti.CandleResolution.week, "h")
         canal = Canal("Apple", point1, point2, point3)
-        self.strategy = Strategy("AAPL", apple_figi, canal)
-        deal = Deal("AAPL", apple_figi, 1000.0)
-        
-        self.test_strategy(self.strategy, deal, datetime(2020, 9, 21), datetime.now())
+        self.strategies.append(Strategy("AAPL", apple_figi, canal))
+        self.deals.append(Deal("AAPL", apple_figi, 1000.0))
+
+        FSK_bond_ticker = "RU000A0ZYDH0"
+        FSK_bond_figi = self.get_figi_from_ticker(FSK_bond_ticker)
+        point1 = (datetime(2021, 11, 1).timestamp(), 989.5)
+        point2 = (datetime(2021, 9, 27).timestamp(), 993.2)
+        point3 = (datetime(2021, 9, 27).timestamp(), 1024.4)
+        canal = Canal(FSK_bond_ticker, point1, point2, point3)
+        self.strategies.append(Strategy(FSK_bond_ticker, FSK_bond_figi, canal, 0.005, 0.03, 0.005))
+        self.deals.append(Deal(FSK_bond_ticker, FSK_bond_figi, 10000.0, ti.Currency.rub))
+
+        # self.test_strategy(self.strategies[0], self.deals[0], datetime(2020, 9, 21), datetime.now())
+        self.test_strategy(self.strategies[1], self.deals[1], datetime(2021, 3, 22), datetime.now())
     
     def setup_sandbox(self):
         body = ti.SandboxRegisterRequest.tinkoff_iis()
@@ -173,7 +206,7 @@ class Helper:
         self.logger.create_log(LogType.info, f"Got {len(candles)} candles for strategy test")
 
         for candle in candles:
-            self.strategy.setup(candle.time)
+            strategy.setup(candle.time)
             low_price = float(candle.l)
             mid_price = (float(candle.o) + float(candle.c)) / 2
             high_price = float(candle.h)
@@ -191,9 +224,9 @@ class Helper:
                 buy_price = low_price
                 # self.logger.create_log(LogType.info, f"Status: {response.status}")
                 self.logger.create_log(LogType.buy, f'''Buy range achieved: 
-                    {strategy.ticker} {available_lots} lots for price ${low_price}
+                    {strategy.ticker} {available_lots} lots for price {low_price} {deal.currency}
                     Date: {candle.time}''')
-                self.logger.create_log(LogType.info, f"Balance: ${deal.available_money}")
+                self.logger.create_log(LogType.info, f"Balance: {deal.available_money} {deal.currency}")
             
             # SELL
             if high_price >= strategy.take_profit_price and deal.lots > 0:
@@ -207,13 +240,14 @@ class Helper:
                 sell_price = high_price
                 # self.logger.create_log(LogType.info, f"Status: {response.status}")
                 self.logger.create_log(LogType.sell, f'''Take profit achieved: 
-                    {strategy.ticker} {available_lots} lots for price ${high_price}
+                    {strategy.ticker} {available_lots} lots for price {high_price} {deal.currency}
                     Profit: +{'{0:.2f}'.format(float(((sell_price / buy_price) - 1) * 100))} %
                     Date: {candle.time}''')
-                self.logger.create_log(LogType.info, f"Balance: ${deal.available_money}")
+                self.logger.create_log(LogType.info, f"Balance: {deal.available_money} {deal.currency}")
         
-        self.logger.create_log(LogType.info, f"Overall profit: ${deal.profit} (+{deal.total_percentage_profit()} %)")
-        
+        self.logger.create_log(LogType.info, f"Overall profit: {deal.profit} {deal.currency} (+{deal.total_percentage_profit()} %)")
+        telegram_bot.send_message(f"Overall profit: {deal.profit} {deal.currency} (+{deal.total_percentage_profit()} %)")
+
         # for operation in deal.operations:
         #     print(operation.type_, operation.price, operation.total_money)
         
