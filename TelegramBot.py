@@ -1,17 +1,15 @@
 import telegram
 import logging
-import json
+import tokens
 from telegram.ext import Updater, CommandHandler, MessageHandler, Filters
 
-updater = Updater(token='2108573446:AAH1uu6ScAoF8J4b3TTwKuYIK_WvA5qqGf4', use_context=True)
-bot = telegram.Bot(token='2108573446:AAH1uu6ScAoF8J4b3TTwKuYIK_WvA5qqGf4')
+updater = Updater(token=tokens.TELEGRAM_BOT_TOKEN, use_context=True)
+bot = telegram.Bot(token=tokens.TELEGRAM_BOT_TOKEN)
 logging.basicConfig(format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
                      level=logging.INFO)
 
-USERS = {}
-# y = json.dumps(USERS)
 
-def start(update, context):
+def start(update, context):    
     context.bot.send_message(chat_id=update.effective_chat.id, text="I'm a bot, please talk to me!")
 
 def echo(update, context):

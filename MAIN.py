@@ -88,6 +88,9 @@ class Deal:
     
     def total_percentage_profit(self) -> float:
         return '{0:.2f}'.format(float((((self.buy_limit + self.profit) / self.buy_limit) - 1) * 100))
+    
+    def send_summary(self):
+        telegram.MessageEntity()
 
 
 class Strategy:
@@ -143,6 +146,7 @@ class Helper:
         self.logger = Logger()
         self.client = ti.SyncClient(tokens.SANDBOX_TOKEN, use_sandbox=True)
         # self.next_operation = Operation.BUY
+
         self.setup_sandbox()
         
         self.logger.create_log(LogType.info, "Sandbox was created")
@@ -245,13 +249,12 @@ class Helper:
                     Date: {candle.time}''')
                 self.logger.create_log(LogType.info, f"Balance: {deal.available_money} {deal.currency}")
         
-        self.logger.create_log(LogType.info, f"Overall profit: {deal.profit} {deal.currency} (+{deal.total_percentage_profit()} %)")
-        telegram_bot.send_message(f"Overall profit: {deal.profit} {deal.currency} (+{deal.total_percentage_profit()} %)")
+        self.logger.create_log(LogType.info, f"Overall profit: {pretty(deal.profit)} {deal.currency} (+{deal.total_percentage_profit()} %)", send_to_telegram=True)
+        # telegram_bot.send_message(tokens.TELEGRAM_CHAT_ID, f"Overall profit: {pretty(deal.profit)} {deal.currency} (+{deal.total_percentage_profit()} %)")
 
         # for operation in deal.operations:
         #     print(operation.type_, operation.price, operation.total_money)
-        
-        
+
 
     def get_balance(self):
         response = self.client.get_portfolio("2026763157")
@@ -260,6 +263,9 @@ class Helper:
         response = self.client.get_market_search_by_ticker(ticker)
         return response.payload.instruments[0].figi
 
+
+def pretty(x: float) -> float:
+    return '{0:.2f}'.format(float(x))
 
 # print(tokens.TRADE_TOKEN, tokens.SANDBOX_TOKEN)
 # client = ti.SyncClient(tokens.TRADE_TOKEN)
