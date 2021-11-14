@@ -7,7 +7,7 @@ from tinvest.schemas import CandlesResponse
 import tokens
 from Balance import Balance
 from Logger import Logger, LogType
-from TelegramBot import bot as telegram_bot
+import TelegramBot
 
 
 Logger.shared = Logger()

@@ -1,8 +1,6 @@
 from enum import Enum
 from datetime import datetime
-
-import telegram
-from TelegramBot import bot as telegram_bot
+# from TelegramBot import bot as telegram_bot
 import tokens
 
 
@@ -34,5 +32,5 @@ class Logger:
         print(res)
         self.file.write(res)
 
-        if send_to_telegram:
-            telegram_bot.send_message(tokens.TELEGRAM_CHAT_ID, res)
+        # if send_to_telegram:
+        #     telegram_bot.send_message(tokens.TELEGRAM_CHAT_ID, res)
