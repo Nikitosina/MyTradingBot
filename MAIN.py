@@ -103,7 +103,6 @@ class Strategy:
 
     def __init__(self, 
         ticker: str, 
-        figi: str, 
         canal: Canal, 
         take_profit_percentage: float = 0.01,
         stop_loss_percentage: float = 0.05,
@@ -111,7 +110,6 @@ class Strategy:
         ):
         
         self.ticker = ticker
-        self.figi = figi
         self.canal = canal
         self.TAKE_PROFIT_PERCENTAGE = take_profit_percentage
         self.STOP_LOSS_PERCENTAGE = stop_loss_percentage
@@ -162,7 +160,7 @@ class Helper:
         point2 = self.generate_point(apple_figi, datetime(2021, 3, 8), datetime(2021, 3, 15), ti.CandleResolution.week)
         point3 = self.generate_point(apple_figi, datetime(2021, 1, 18), datetime(2021, 1, 25), ti.CandleResolution.week, "h")
         canal = Canal("Apple", point1, point2, point3)
-        self.strategies.append(Strategy("AAPL", apple_figi, canal))
+        self.strategies.append(Strategy("AAPL", canal))
         self.deals.append(Deal("AAPL", apple_figi, 1000.0))
 
         FSK_bond_ticker = "RU000A0ZYDH0"
@@ -171,7 +169,7 @@ class Helper:
         point2 = (datetime(2021, 9, 27).timestamp(), 993.2)
         point3 = (datetime(2021, 9, 27).timestamp(), 1024.4)
         canal = Canal(FSK_bond_ticker, point1, point2, point3)
-        self.strategies.append(Strategy(FSK_bond_ticker, FSK_bond_figi, canal, 0.005, 0.03, 0.005))
+        self.strategies.append(Strategy(FSK_bond_ticker, canal, 0.005, 0.03, 0.005))
         self.deals.append(Deal(FSK_bond_ticker, FSK_bond_figi, 10000.0, ti.Currency.rub))
 
         # self.test_strategy(self.strategies[0], self.deals[0], datetime(2020, 9, 21), datetime.now())
@@ -196,6 +194,11 @@ class Helper:
             point = (from_.timestamp(), float(candle.h))
         return point
     
+    def create_strategy(self, ticker: str, canal: Canal):
+        strategy = Strategy(ticker, canal)
+        self.strategies.append(strategy)
+        return strategy
+
     def test_strategy(self,
         strategy: Strategy,
         deal: Deal,
@@ -204,7 +207,7 @@ class Helper:
         interval: ti.CandleResolution = ti.CandleResolution.week):
 
         buy_price, sell_price = 0, 0
-        response = self.client.get_market_candles(strategy.figi, from_, to, interval)
+        response = self.client.get_market_candles(deal.figi, from_, to, interval)
         candles = response.payload.candles
         self.logger.create_log(LogType.info, f"Starting strategy test for {strategy.ticker}")
         self.logger.create_log(LogType.info, f"Got {len(candles)} candles for strategy test")
@@ -220,7 +223,7 @@ class Helper:
                 available_lots = int(deal.available_money / low_price)
                 body = ti.SandboxSetPositionBalanceRequest(
                     balance=available_lots,
-                    figi=strategy.figi,
+                    figi=deal.figi,
                 )
                 response = self.client.set_sandbox_positions_balance(body, tokens.SANDBOX_ACCOUNT_ID)
 
@@ -236,7 +239,7 @@ class Helper:
             if high_price >= strategy.take_profit_price and deal.lots > 0:
                 body = ti.SandboxSetPositionBalanceRequest(
                     balance=0,
-                    figi=strategy.figi,
+                    figi=deal.figi,
                 )
                 response = self.client.set_sandbox_positions_balance(body, tokens.SANDBOX_ACCOUNT_ID)
 
