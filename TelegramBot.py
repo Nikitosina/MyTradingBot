@@ -1,9 +1,10 @@
 import telegram
 import logging
+import Logger
 import tokens
 from datetime import datetime
 import tinvest as ti
-from MAIN import Strategy, helper, Canal, Deal
+import MAIN
 from telegram import Update
 from telegram.ext import (
     Updater,
@@ -18,7 +19,7 @@ bot = telegram.Bot(token=tokens.TELEGRAM_BOT_TOKEN)
 logging.basicConfig(format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
                      level=logging.INFO)
 
-TICKER, POINTS, DEAL, CHANGE_THRESHOLDS, BUY_THRESHOLD, STOP_LOSS_PERCANTAGE, TAKE_PROFIT_PERCENTAGE, STRATEGY_TEST = range(8)
+TICKER, POINTS, DEAL, CHANGE_THRESHOLDS, BUY_THRESHOLD, STOP_LOSS_PERCANTAGE, TAKE_PROFIT_PERCENTAGE, STRATEGY_TEST, TEST_OR_SAVE, SAVE_AND_RUN = range(10)
 
 current_ticker = ""
 current_figi = ""
@@ -99,6 +100,10 @@ def process_points(update: Update, context: CallbackContext):
     return CHANGE_THRESHOLDS
 
 def process_is_changing_thresholds(update: Update, context: CallbackContext):
+    if "cancel" in update.message.text.lower():
+        end_conversation(update, context)
+        return ConversationHandler.END
+
     text = update.message.text
     if text == "CHANGE":
         update.message.reply_text("Enter buy threshold (<= 1.00) or '-' to leave it unchanged")
@@ -111,6 +116,10 @@ def process_is_changing_thresholds(update: Update, context: CallbackContext):
         return CHANGE_THRESHOLDS
 
 def process_buy_threshold(update: Update, context: CallbackContext):
+    if "cancel" in update.message.text.lower():
+        end_conversation(update, context)
+        return ConversationHandler.END
+
     if update.message.text == "-":
         update.message.reply_text("Enter stop loss percentage (<= 1.00) or '-' to leave it unchanged")
         return STOP_LOSS_PERCANTAGE
@@ -126,6 +135,10 @@ def process_buy_threshold(update: Update, context: CallbackContext):
         return STOP_LOSS_PERCANTAGE
 
 def process_stop_loss(update: Update, context: CallbackContext):
+    if "cancel" in update.message.text.lower():
+        end_conversation(update, context)
+        return ConversationHandler.END
+
     if update.message.text == "-":
         update.message.reply_text("Enter take profit percentage (<= 1.00) or '-' to leave it unchanged")
         return TAKE_PROFIT_PERCENTAGE
@@ -141,6 +154,10 @@ def process_stop_loss(update: Update, context: CallbackContext):
         return TAKE_PROFIT_PERCENTAGE
 
 def process_take_profit(update: Update, context: CallbackContext):
+    if "cancel" in update.message.text.lower():
+        end_conversation(update, context)
+        return ConversationHandler.END
+
     if update.message.text == "-":
         update.message.reply_text(
             f'''The Strategy now looks like this:
@@ -172,6 +189,10 @@ def process_take_profit(update: Update, context: CallbackContext):
         return CHANGE_THRESHOLDS
 
 def process_deal(update: Update, context: CallbackContext):
+    if "cancel" in update.message.text.lower():
+        end_conversation(update, context)
+        return ConversationHandler.END
+
     data = update.message.text.split()
     limit_sum = float(data[0])
     
@@ -186,8 +207,19 @@ def process_deal(update: Update, context: CallbackContext):
     current_deal = Deal(current_ticker, current_figi, limit_sum, currency)
     update.message.reply_text(f'''
         Deal was successfully created
+        To test strategy enter TEST, to save and run strategy enter SAVE AND RUN
     ''')
     return ConversationHandler.END
+
+def process_test_or_save(update: Update, context: CallbackContext):
+    if update.message.text.strip() == "TEST":
+        pass
+    elif update.message.text.strip() == "SAVE AND RUN":
+        update.message.reply_text("Saved")
+        Logger.shared.save_deal(current_deal, current_strategy)
+    else:
+        update.message.reply_text("Try again")
+        return TEST_OR_SAVE
 
 def cancel(update: Update, context: CallbackContext):
     update.message.reply_text('Creation of Strategy is cancelled')
@@ -211,7 +243,8 @@ def main():
             BUY_THRESHOLD: [MessageHandler(Filters.text, process_buy_threshold)],
             STOP_LOSS_PERCANTAGE: [MessageHandler(Filters.text, process_stop_loss)],
             TAKE_PROFIT_PERCENTAGE: [MessageHandler(Filters.text, process_take_profit)],
-            DEAL: [MessageHandler(Filters.text, process_deal)]
+            DEAL: [MessageHandler(Filters.text, process_deal)],
+            TEST_OR_SAVE: [MessageHandler(Filters.text, process_test_or_save)]
             # STRATEGY_TEST: [
             #     MessageHandler(Filters.location, location),
             #     CommandHandler('skip', skip_location),

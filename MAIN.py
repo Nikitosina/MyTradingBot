@@ -6,11 +6,8 @@ import tinvest as ti
 from tinvest.schemas import CandlesResponse
 import tokens
 from Balance import Balance
-from Logger import Logger, LogType
+import Logger
 import TelegramBot
-
-
-Logger.shared = Logger()
 
 
 class OperationType(Enum):
@@ -50,6 +47,7 @@ class Operation:
         self.price = price
         self.currency = currency
         self.lots = lots
+        self.date = datetime().now().timestamp()
         self.total_money = price * lots
 
 
@@ -117,7 +115,7 @@ class Strategy:
         
         self.setup()
 
-        Logger.shared.create_log(LogType.info, 
+        logger.create_log(LogType.info, 
             f'''Created Strategy for {self.ticker} with: 
                 Buy range: {self.buy_range}
                 Stop loss price: {self.stop_loss_price},
@@ -139,15 +137,17 @@ class Strategy:
         self.canal_median = (lower_bound + upper_bound) / 2
 
 
+logger = Logger()
+
 class Helper: 
     def __init__(self):
-        self.logger = Logger()
+        # self.logger = Logger()
         self.client = ti.SyncClient(tokens.SANDBOX_TOKEN, use_sandbox=True)
         # self.next_operation = Operation.BUY
 
         self.setup_sandbox()
         
-        self.logger.create_log(LogType.info, "Sandbox was created")
+        logger.create_log(LogType.info, "Sandbox was created")
         
         self.balance = Balance(self.client, tokens.SANDBOX_ACCOUNT_ID)
         self.balance.update()
@@ -209,8 +209,8 @@ class Helper:
         buy_price, sell_price = 0, 0
         response = self.client.get_market_candles(deal.figi, from_, to, interval)
         candles = response.payload.candles
-        self.logger.create_log(LogType.info, f"Starting strategy test for {strategy.ticker}")
-        self.logger.create_log(LogType.info, f"Got {len(candles)} candles for strategy test")
+        logger.create_log(LogType.info, f"Starting strategy test for {strategy.ticker}")
+        logger.create_log(LogType.info, f"Got {len(candles)} candles for strategy test")
 
         for candle in candles:
             strategy.setup(candle.time)
@@ -230,10 +230,10 @@ class Helper:
                 deal.make_operation(Operation(OperationType.BUY, low_price, ti.Currency.usd, available_lots))
                 buy_price = low_price
                 # self.logger.create_log(LogType.info, f"Status: {response.status}")
-                self.logger.create_log(LogType.buy, f'''Buy range achieved: 
+                logger.create_log(LogType.buy, f'''Buy range achieved: 
                     {strategy.ticker} {available_lots} lots for price {low_price} {deal.currency}
                     Date: {candle.time}''')
-                self.logger.create_log(LogType.info, f"Balance: {deal.available_money} {deal.currency}")
+                logger.create_log(LogType.info, f"Balance: {deal.available_money} {deal.currency}")
             
             # SELL
             if high_price >= strategy.take_profit_price and deal.lots > 0:
@@ -246,13 +246,13 @@ class Helper:
                 deal.make_operation(Operation(OperationType.SELL, high_price, ti.Currency.usd, available_lots))
                 sell_price = high_price
                 # self.logger.create_log(LogType.info, f"Status: {response.status}")
-                self.logger.create_log(LogType.sell, f'''Take profit achieved: 
+                logger.create_log(LogType.sell, f'''Take profit achieved: 
                     {strategy.ticker} {available_lots} lots for price {high_price} {deal.currency}
                     Profit: +{'{0:.2f}'.format(float(((sell_price / buy_price) - 1) * 100))} %
                     Date: {candle.time}''')
-                self.logger.create_log(LogType.info, f"Balance: {deal.available_money} {deal.currency}")
+                logger.create_log(LogType.info, f"Balance: {deal.available_money} {deal.currency}")
         
-        self.logger.create_log(LogType.info, f"Overall profit: {pretty(deal.profit)} {deal.currency} (+{deal.total_percentage_profit()} %)", send_to_telegram=True)
+        logger.create_log(LogType.info, f"Overall profit: {pretty(deal.profit)} {deal.currency} (+{deal.total_percentage_profit()} %)", send_to_telegram=True)
         # telegram_bot.send_message(tokens.TELEGRAM_CHAT_ID, f"Overall profit: {pretty(deal.profit)} {deal.currency} (+{deal.total_percentage_profit()} %)")
 
         # for operation in deal.operations:
