@@ -15,6 +15,11 @@ from telegram.ext import (
     CallbackContext,
 )
 
+# Strategy = MAIN.Strategy
+# Deal = MAIN.Deal
+# Canal = MAIN.Canal
+# helper = MAIN.helper
+
 bot = telegram.Bot(token=tokens.TELEGRAM_BOT_TOKEN)
 logging.basicConfig(format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
                      level=logging.INFO)

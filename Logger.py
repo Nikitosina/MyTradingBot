@@ -1,11 +1,15 @@
 from enum import Enum
 from datetime import datetime
-# from MAIN import Strategy, Deal, OperationType
+from pprint import pprint
+from tinvest import OperationTrade
 # from TelegramBot import bot as telegram_bot
-import MAIN
 import tokens
 import json
 
+# Strategy = MAIN.Strategy
+# Deal = MAIN.Deal
+# Canal = MAIN.Canal
+# OperationType = MAIN.OperationType
 
 class LogType(Enum):
     info = 0
@@ -38,43 +42,30 @@ class Logger:
         # if send_to_telegram:
         #     telegram_bot.send_message(tokens.TELEGRAM_CHAT_ID, res)
     
-    def save_deal(self, deal: Deal, strategy: Strategy):
+    def save_deal(self, deal: dict, strategy: dict):
         new_data = {
-            "deal": {
-                "figi": deal.figi,
-                "currency": deal.currency,
-                "money_limit": deal.buy_limit,
-                "available_money": deal.available_money,
-                "lots": deal.lots,
-                "operations": []
-            },
-            "strategy": {
-                "type": "canal",
-                "take_profit_percentage": strategy.TAKE_PROFIT_PERCENTAGE,
-                "buy_threshold": strategy.BUY_THRESHOLD,
-                "stop_loss_percentage": strategy.STOP_LOSS_PERCENTAGE,
-                "canal": {
-                    "k": strategy.canal.k,
-                    "b1": strategy.canal.b1,
-                    "b2": strategy.canal.b2
-                }
-            }
+            "deal": deal,
+            "strategy": strategy
         }
 
-        for operation in deal.operations:
-            new_data["deal"]["operations"].append({
-                "type": "buy" if operation.type_ == OperationType.BUY else "sell",
-                "price": operation.price,
-                "lots": operation.lots
-            })
-
         with open("deals.json", "r+") as f:
-            file_data = json.load(f)
-
-            if deal.ticker in file_data:
-                file_data[deal.ticker].append(new_data)
+            read = f.read()
+            # print(read)
+            if read == "":
+                file_data = {}
             else:
-                file_data[deal.ticker] = new_data
+                file_data = json.loads(read)
+            # print(file_data)
+
+            if deal["ticker"] in file_data:
+                file_data[deal["ticker"]].update(new_data)
+            else:
+                file_data[deal["ticker"]] = new_data
             
+            pprint(file_data)
             f.seek(0)
             json.dump(file_data, f, indent = 4)
+            f.truncate()
+
+
+logger = Logger()
