@@ -1,10 +1,10 @@
 import telegram
 import logging
-import Logger
 import tokens
 from datetime import datetime
 import tinvest as ti
-import MAIN
+from BaseClasses import Deal, Strategy, Canal
+from Logger import logger
 from telegram import Update
 from telegram.ext import (
     Updater,
@@ -14,11 +14,6 @@ from telegram.ext import (
     ConversationHandler,
     CallbackContext,
 )
-
-# Strategy = MAIN.Strategy
-# Deal = MAIN.Deal
-# Canal = MAIN.Canal
-# helper = MAIN.helper
 
 bot = telegram.Bot(token=tokens.TELEGRAM_BOT_TOKEN)
 logging.basicConfig(format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
@@ -30,6 +25,7 @@ current_ticker = ""
 current_figi = ""
 current_strategy: Strategy = None
 current_deal: Deal = None
+trader = None
 
 def start(update, context):    
     context.bot.send_message(chat_id=update.effective_chat.id, text="I'm a bot, please talk to me!")
@@ -55,18 +51,20 @@ def create_strategy(update: Update, context: CallbackContext):
 
 
 def process_ticker(update: Update, context: CallbackContext):
+    global current_ticker, current_figi
     if "cancel" in update.message.text.lower():
         end_conversation(update, context)
         return ConversationHandler.END
     
-    result = helper.get_figi_from_ticker(update.message.text)
+    result = trader.get_figi_from_ticker(update.message.text)
     current_ticker = update.message.text
     current_figi = result
     update.message.reply_text(
-        f'''Got figi: {result}. If everything is OK, enter 3 point to set Canal
-            Expected input: <day>.<month>.<year> <price>
-                           <day>.<month>.<year> <price>
-                           <day>.<month>.<year> <price>'''
+        f'''
+        Got figi: {result}. If everything is OK, enter 3 point to set Canal
+        Expected input: <day>.<month>.<year> <price>
+                        <day>.<month>.<year> <price>
+                        <day>.<month>.<year> <price>'''
     )
 
     return POINTS
@@ -88,7 +86,7 @@ def process_points(update: Update, context: CallbackContext):
         points.append(point)
     
     canal = Canal("Apple", points[0], points[1], points[2])
-    current_strategy = helper.create_strategy(current_ticker, canal)
+    current_strategy = trader.create_strategy(current_ticker, canal)
     
     update.message.reply_text(
         f'''Created Strategy with following parameters:
@@ -186,7 +184,7 @@ def process_take_profit(update: Update, context: CallbackContext):
             Ticker: {current_strategy.ticker}
             Buy range: {current_strategy.buy_range}, (+- {current_strategy.BUY_THRESHOLD * 100} % of channel's bottom)
             Stop loss: {current_strategy.stop_loss_price}, (- {current_strategy.STOP_LOSS_PERCENTAGE * 100} % from channel's bottom)
-            Teke profit: {current_strategy.take_profit_price}, (- {current_strategy.TAKE_PROFIT_PERCENTAGE * 100} % from channel's bottom)
+            Take profit: {current_strategy.take_profit_price}, (- {current_strategy.TAKE_PROFIT_PERCENTAGE * 100} % from channel's bottom)
             
             If everything is okay, enter OK to proceed to next steps.
             If not, you can modify thresholds by entering CHANGE
@@ -194,6 +192,7 @@ def process_take_profit(update: Update, context: CallbackContext):
         return CHANGE_THRESHOLDS
 
 def process_deal(update: Update, context: CallbackContext):
+    global current_deal
     if "cancel" in update.message.text.lower():
         end_conversation(update, context)
         return ConversationHandler.END
@@ -214,14 +213,14 @@ def process_deal(update: Update, context: CallbackContext):
         Deal was successfully created
         To test strategy enter TEST, to save and run strategy enter SAVE AND RUN
     ''')
-    return ConversationHandler.END
+    return TEST_OR_SAVE
 
 def process_test_or_save(update: Update, context: CallbackContext):
     if update.message.text.strip() == "TEST":
         pass
     elif update.message.text.strip() == "SAVE AND RUN":
         update.message.reply_text("Saved")
-        Logger.shared.save_deal(current_deal, current_strategy)
+        logger.save_deal(current_deal.generate_json(), current_strategy.generate_json())
     else:
         update.message.reply_text("Try again")
         return TEST_OR_SAVE
@@ -271,7 +270,7 @@ def main():
 
 # dispatcher = updater.dispatcher
 start_handler = CommandHandler('start', start)
-main()
+# main()
 # echo_handler = MessageHandler(Filters.text & (~Filters.command), echo)
 # dispatcher.add_handler(start_handler)
 # dispatcher.add_handler(echo_handler)

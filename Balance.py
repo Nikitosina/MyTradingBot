@@ -27,3 +27,10 @@ class Balance:
 
         # print(self.rub, self.usd, self.euro)
         # print(self.blocked)
+    
+    def get_current(self) -> str:
+        return f'''Balance:
+        RUB: {self.rub},
+        USD: {self.usd},
+        EUR: {self.euro},
+        Blocked: {self.blocked}'''

@@ -20,7 +20,7 @@ class LogType(Enum):
 
 class Logger:
     def __init__(self):
-        self.file = open("activity.log", "w", encoding="utf8")
+        self.file = open("activity.log", "a+", encoding="utf8")
         self.file.write("\n ========== NEW LOG ========== \n")
 
     def create_log(self, type: LogType, message: str, send_to_telegram: bool = False):
@@ -50,19 +50,16 @@ class Logger:
 
         with open("deals.json", "r+") as f:
             read = f.read()
-            # print(read)
             if read == "":
                 file_data = {}
             else:
                 file_data = json.loads(read)
-            # print(file_data)
 
             if deal["ticker"] in file_data:
                 file_data[deal["ticker"]].update(new_data)
             else:
                 file_data[deal["ticker"]] = new_data
             
-            pprint(file_data)
             f.seek(0)
             json.dump(file_data, f, indent = 4)
             f.truncate()

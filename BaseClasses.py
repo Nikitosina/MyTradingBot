@@ -10,7 +10,14 @@ class OperationType(Enum):
 
 class Canal:
     # two points from bottom(top) and one from top(bottom)
-    def __init__(self, name: str, p1: tuple, p2: tuple, p3: tuple):
+    def __init__(self, name: str, p1: tuple = (0, 0), p2: tuple = (0, 0), p3: tuple = (0, 0), k: float = None, b1: float = None, b2: float = None):
+        if k and b1 and b2:
+            self.name = name
+            self.k = k
+            self.b1 = b1
+            self.b2 = b2
+            return
+
         x1, y1 = p1
         x2, y2 = p2
         x3, y3 = p3
@@ -52,7 +59,8 @@ class Deal:
         currency: ti.Currency = ti.Currency.usd, 
         profit: float = 0, 
         lots: int = 0, 
-        operations: list = []
+        operations: list = [],
+        is_active: bool = True
         ):
         self.ticker = ticker
         self.figi = figi
@@ -62,6 +70,7 @@ class Deal:
         self.profit = profit
         self.lots = lots
         self.operations = operations
+        self.is_active = is_active
 
     def make_operation(self, operation: Operation) -> None:
         if operation.type_ == OperationType.BUY:
@@ -87,8 +96,10 @@ class Deal:
                 "figi": self.figi,
                 "currency": self.currency,
                 "money_limit": self.buy_limit,
+                "profit": self.profit,
                 "available_money": self.available_money,
                 "lots": self.lots,
+                "is_active": self.is_active,
                 "operations": []
             # }
         }
